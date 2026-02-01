@@ -1,0 +1,10 @@
+name: capture-visualiser
+display_name: Capture Visualiser
+contributions:
+  commands:
+    - id: capture-visualiser.make_capture_widget
+      python_name: capture_visualiser.widgets.capture_visualiser_widget:CaptureVisualiserWidget
+      title: Open Capture Visualiser
+  widgets:
+    - command: capture-visualiser.make_capture_widget
+      display_name: Capture Visualiser

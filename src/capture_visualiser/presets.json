@@ -1,0 +1,39 @@
+{
+  "presets": [
+    {
+      "id": "xenium",
+      "name": "Xenium",
+      "description": "10x Genomics Xenium in situ; full imageable slide area",
+      "width_mm": 10.45,
+      "height_mm": 22.45
+    },
+    {
+      "id": "visium_hd",
+      "name": "Visium HD",
+      "description": "10x Genomics Visium HD; single capture area (6.5 x 6.5 mm)",
+      "width_mm": 6.5,
+      "height_mm": 6.5
+    },
+    {
+      "id": "merscope",
+      "name": "MERSCOPE",
+      "description": "Vizgen MERSCOPE Ultra; 10 x 10 mm imageable area",
+      "width_mm": 10.0,
+      "height_mm": 10.0
+    },
+    {
+      "id": "geomx",
+      "name": "GeoMx",
+      "description": "NanoString GeoMx DSP; Imageable area (14.1 x 35.3 mm)",
+      "width_mm": 14.1,
+      "height_mm": 35.3
+    },
+    {
+      "id": "barseq",
+      "name": "BARseq",
+      "description": "Barcoded Anatomy Resolved by sequencing; 20 x 60 mm capture area",
+      "width_mm": 20.0,
+      "height_mm": 60.0
+    }
+  ]
+}

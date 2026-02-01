@@ -1,0 +1,10 @@
+name: capture-visualiser
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.11,<3.13
+  - pyqt
+  - pip
+  - pip:
+    - -e .

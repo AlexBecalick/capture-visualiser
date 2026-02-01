@@ -1,0 +1,52 @@
+[project]
+name = "capture-visualiser"
+version = "0.1.0"
+description = "Overlay spatial transcriptomics capture areas onto brain atlas coronal sections in napari"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "BSD-3-Clause"}
+authors = [{name = "Alexander Becalick"}]
+keywords = ["napari", "spatial-transcriptomics", "xenium", "visium", "merscope", "geomx", "allen-atlas", "brain", "visualization"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: napari",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+dependencies = [
+    "napari>=0.6.1",
+    "numpy>=1.24",
+    "qtpy",
+    "brainglobe-atlasapi>=2.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-qt",
+    "pytest-cov",
+]
+
+[project.urls]
+Homepage = "https://github.com/becalia/capture_visualiser"
+Documentation = "https://github.com/becalia/capture_visualiser#readme"
+Repository = "https://github.com/becalia/capture_visualiser"
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+capture_visualiser = ["napari.yaml", "presets.json"]
+
+[project.entry-points."napari.manifest"]
+capture-visualiser = "capture_visualiser:napari.yaml"

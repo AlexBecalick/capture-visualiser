@@ -102,7 +102,7 @@ def add_capture_rectangle(
         edge_color=face_color,
         face_color=face_color,
         opacity=0.3,
-        edge_width=2,
+        edge_width=0,
     )
     return shapes_layer.name
 
@@ -197,3 +197,56 @@ def rotate_capture_shape_at_index(
     new_data = list(shapes_layer.data)
     new_data[shape_index] = new_vertices
     shapes_layer.data = new_data
+
+
+def get_shapes_physical_params(shapes_layer, res_dv_um: float, res_ml_um: float):
+    """Extract shape parameters in physical units (μm) for atlas switching.
+
+    Returns list of dicts: center_dv_um, center_ml_um, width_um, height_um, rotation_rad.
+    """
+    params_list = []
+    for i in range(shapes_layer.nshapes):
+        vertices = np.asarray(shapes_layer.data[i])
+        center_dv = float(np.mean(vertices[:, 0]))
+        center_ml = float(np.mean(vertices[:, 1]))
+        center_dv_um = center_dv * res_dv_um
+        center_ml_um = center_ml * res_ml_um
+        edge_w = vertices[1] - vertices[0]
+        edge_h = vertices[3] - vertices[0]
+        width_um = float(np.sqrt((edge_w[0] * res_dv_um) ** 2 + (edge_w[1] * res_ml_um) ** 2))
+        height_um = float(np.sqrt((edge_h[0] * res_dv_um) ** 2 + (edge_h[1] * res_ml_um) ** 2))
+        rotation_rad = math.atan2(edge_w[0], edge_w[1])
+        params_list.append({
+            "center_dv_um": center_dv_um,
+            "center_ml_um": center_ml_um,
+            "width_um": width_um,
+            "height_um": height_um,
+            "rotation_rad": rotation_rad,
+        })
+    return params_list
+
+
+def recreate_shapes_in_new_atlas(
+    shapes_layer,
+    params_list: list,
+    res_dv_um: float,
+    res_ml_um: float,
+    colors: list[str],
+) -> None:
+    """Recreate shapes from physical params in new atlas coordinate space."""
+    new_data = []
+    for p in params_list:
+        center_dv_vox = p["center_dv_um"] / res_dv_um
+        center_ml_vox = p["center_ml_um"] / res_ml_um
+        width_vox = p["width_um"] / res_ml_um
+        height_vox = p["height_um"] / res_dv_um
+        verts = create_capture_rectangle_vertices(
+            center_dv_vox, center_ml_vox, width_vox, height_vox,
+            p["rotation_rad"]
+        )
+        new_data.append(verts)
+    shapes_layer.data = new_data
+    shapes_layer.scale = (res_dv_um, res_ml_um)
+    shapes_layer.face_color = colors
+    shapes_layer.edge_color = colors
+    shapes_layer.edge_width = 0

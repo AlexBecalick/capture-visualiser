@@ -4,7 +4,7 @@ A napari plugin for overlaying spatial transcriptomics capture areas onto brain 
 
 ## Features
 
-- **Allen mouse brain atlas**: Load the Allen CCFv3 atlas (25 μm resolution) via BrainGlobe
+- **BrainGlobe atlases**: Load any atlas from brainglobe-atlasapi (mouse, human, rat, zebrafish, etc.)
 - **AP plane slider**: Step through coronal sections to find the plane of interest
 - **Capture area overlays**: Rectangles scaled to platform dimensions (Xenium, Visium HD, MERSCOPE, GeoMx, BARseq)
 - **Interactive placement**: Select, translate and rotate capture areas using napari's shape tools
@@ -60,7 +60,7 @@ The Allen atlas is downloaded automatically on first use. The conda environment 
 ### Workflow
 
 1. **Load atlas**  
-   Click **Load Allen Mouse 25 μm atlas**. The atlas downloads on first use and may take a few minutes. A Xenium-sized (10.45x22.45 mm) capture area appears by default.
+   Select an atlas from the dropdown (default: allen_mouse_25um, recommended for mouse) and click **Load atlas**. Atlases marked "(recommended)" are suggested starting points. A download progress bar appears when installing a new atlas. You can switch to another atlas at any time—capture areas are preserved and repositioned in the new atlas space.
 
 2. **Browse AP planes**  
    Use the **AP plane** slider to move through coronal sections and find the region you care about.
@@ -92,7 +92,7 @@ The Allen atlas is downloaded automatically on first use. The conda environment 
 |-------------------|-------------------------------------|---------|
 | Width (ML)        | Capture area width in mm            | 10.45 (Xenium) |
 | Height (DV)       | Capture area height in mm           | 22.45 (Xenium) |
-| Atlas             | BrainGlobe atlas name               | allen_mouse_25um |
+| Atlas             | Dropdown selection from brainglobe-atlasapi | allen_mouse_25um (default) |
 | Presets           | Config file                         | `presets.json` in package; override at `~/.config/capture_visualiser/presets.json` |
 
 ## License

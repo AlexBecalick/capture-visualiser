@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from qtpy.QtCore import Qt, QThread
 from qtpy.QtWidgets import (
+    QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 from napari.viewer import Viewer
 
+from capture_visualiser._atlases import get_available_atlases
 from capture_visualiser._constants import (
     DEFAULT_ATLAS_NAME,
     DEFAULT_CAPTURE_HEIGHT_MM,
@@ -22,10 +27,13 @@ from capture_visualiser._constants import (
 )
 from capture_visualiser._presets import get_presets
 from capture_visualiser.atlas_layer import AtlasCoronalView
+from capture_visualiser.atlas_loader import AtlasInstallWorker, is_atlas_downloaded
 from capture_visualiser.capture_rectangle import (
     CAPTURE_COLORS,
     add_capture_rectangle,
     add_capture_shape_to_layer,
+    get_shapes_physical_params,
+    recreate_shapes_in_new_atlas,
     rotate_capture_shape_at_index,
     update_capture_shape_at_index,
 )
@@ -45,6 +53,8 @@ class CaptureVisualiserWidget(QWidget):
         self._capture_layer_name: str | None = None
         self._capture_color_index: int = 0
         self._shape_colors: list[str] = []
+        self._install_thread: QThread | None = None
+        self._install_worker: AtlasInstallWorker | None = None
 
         layout = QVBoxLayout(self)
 
@@ -59,12 +69,25 @@ class CaptureVisualiserWidget(QWidget):
         # Atlas section
         atlas_group = QGroupBox("Atlas")
         atlas_layout = QVBoxLayout(atlas_group)
-        self._load_btn = QPushButton("Load Allen Mouse 25 μm atlas")
-        self._load_btn.setToolTip(
-            "Load the Allen mouse brain atlas. Downloads on first use if needed."
-        )
+        atlas_row = QHBoxLayout()
+        self._atlas_combo = QComboBox()
+        self._atlas_combo.setToolTip("Select a BrainGlobe atlas. Downloads on first use if needed.")
+        for atlas_id, display_name in get_available_atlases():
+            self._atlas_combo.addItem(display_name, atlas_id)
+        # Set default to allen_mouse_25um
+        default_idx = self._atlas_combo.findData(DEFAULT_ATLAS_NAME)
+        if default_idx >= 0:
+            self._atlas_combo.setCurrentIndex(default_idx)
+        atlas_row.addWidget(self._atlas_combo)
+        self._load_btn = QPushButton("Load atlas")
+        self._load_btn.setToolTip("Load the selected atlas. Downloads on first use if needed.")
         self._load_btn.clicked.connect(self._on_load_atlas)
-        atlas_layout.addWidget(self._load_btn)
+        atlas_row.addWidget(self._load_btn)
+        atlas_layout.addLayout(atlas_row)
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setVisible(False)
+        self._progress_bar.setRange(0, 100)
+        atlas_layout.addWidget(self._progress_bar)
         layout.addWidget(atlas_group)
 
         # Preset buttons
@@ -139,42 +162,125 @@ class CaptureVisualiserWidget(QWidget):
         layout.addStretch()
 
     def _on_load_atlas(self) -> None:
-        try:
+        atlas_name = self._atlas_combo.currentData()
+        if not atlas_name:
             atlas_name = DEFAULT_ATLAS_NAME
+
+        if not is_atlas_downloaded(atlas_name):
+            self._download_then_load(atlas_name)
+            return
+
+        self._do_load_atlas(atlas_name)
+
+    def _download_then_load(self, atlas_name: str) -> None:
+        """Download atlas with progress bar, then load."""
+        self._load_btn.setEnabled(False)
+        self._atlas_combo.setEnabled(False)
+        self._progress_bar.setVisible(True)
+        self._progress_bar.setRange(0, 0)  # Indeterminate until we get total
+
+        self._install_thread = QThread()
+        self._install_worker = AtlasInstallWorker(atlas_name)
+        self._install_worker.moveToThread(self._install_thread)
+
+        def on_progress(completed: int, total: int) -> None:
+            if total > 0:
+                self._progress_bar.setRange(0, total)
+                self._progress_bar.setValue(completed)
+
+        def on_finished() -> None:
+            self._install_thread.quit()
+            self._progress_bar.setVisible(False)
+            self._load_btn.setEnabled(True)
+            self._atlas_combo.setEnabled(True)
+            self._do_load_atlas(atlas_name)
+
+        def on_error(msg: str) -> None:
+            self._install_thread.quit()
+            self._progress_bar.setVisible(False)
+            self._load_btn.setEnabled(True)
+            self._atlas_combo.setEnabled(True)
+            self._show_error(f"Atlas download failed: {msg}")
+
+        self._install_worker.progress.connect(on_progress)
+        self._install_worker.finished.connect(on_finished)
+        self._install_worker.error.connect(on_error)
+        self._install_thread.started.connect(self._install_worker.run)
+        self._install_thread.start()
+
+    def _do_load_atlas(self, atlas_name: str) -> None:
+        """Load atlas and add to viewer. Replaces existing atlas if any."""
+        # Save existing capture shapes for atlas switch
+        saved_params = None
+        if (
+            self._atlas_view is not None
+            and self._capture_layer_name is not None
+            and self._capture_layer_name in self._viewer.layers
+        ):
+            layer = self._viewer.layers[self._capture_layer_name]
+            saved_params = get_shapes_physical_params(
+                layer, self._atlas_view.res_dv, self._atlas_view.res_ml
+            )
+
+        # Remove old atlas layers
+        if self._ref_layer_name and self._ref_layer_name in self._viewer.layers:
+            self._viewer.layers.remove(self._ref_layer_name)
+        if self._ann_layer_name and self._ann_layer_name in self._viewer.layers:
+            self._viewer.layers.remove(self._ann_layer_name)
+
+        try:
             self._atlas_view = AtlasCoronalView(atlas_name)
         except Exception as e:
             self._show_error(f"Failed to load atlas: {e}")
             return
 
-        # Add to viewer
         self._ref_layer_name, self._ann_layer_name = self._atlas_view.add_to_viewer(
             self._viewer
         )
 
-        # Add initial capture rectangle (Xenium default)
-        self._capture_color_index = 0
-        self._shape_colors = [CAPTURE_COLORS[0]]
-        self._capture_layer_name = add_capture_rectangle(
-            self._viewer,
-            width_mm=XENIUM_SLIDE_WIDTH_MM,
-            height_mm=XENIUM_SLIDE_HEIGHT_MM,
-            res_dv_um=self._atlas_view.res_dv,
-            res_ml_um=self._atlas_view.res_ml,
-            shape_dv=self._atlas_view.shape_dv,
-            shape_ml=self._atlas_view.shape_ml,
-            face_color=self._shape_colors[0],
-        )
-        self._width_spin.setValue(XENIUM_SLIDE_WIDTH_MM)
-        self._height_spin.setValue(XENIUM_SLIDE_HEIGHT_MM)
-        # Select the initial shape so presets work immediately
-        layer = self._viewer.layers[self._capture_layer_name]
-        layer.selected_data = {0}
+        if saved_params is not None and self._capture_layer_name and self._capture_layer_name in self._viewer.layers:
+            # Recreate shapes in new atlas space
+            layer = self._viewer.layers[self._capture_layer_name]
+            recreate_shapes_in_new_atlas(
+                layer,
+                saved_params,
+                self._atlas_view.res_dv,
+                self._atlas_view.res_ml,
+                self._shape_colors,
+            )
+        else:
+            # Initial load: add first capture rectangle
+            self._capture_color_index = 0
+            self._shape_colors = [CAPTURE_COLORS[0]]
+            self._capture_layer_name = add_capture_rectangle(
+                self._viewer,
+                width_mm=XENIUM_SLIDE_WIDTH_MM,
+                height_mm=XENIUM_SLIDE_HEIGHT_MM,
+                res_dv_um=self._atlas_view.res_dv,
+                res_ml_um=self._atlas_view.res_ml,
+                shape_dv=self._atlas_view.shape_dv,
+                shape_ml=self._atlas_view.shape_ml,
+                face_color=self._shape_colors[0],
+            )
+            self._width_spin.setValue(XENIUM_SLIDE_WIDTH_MM)
+            self._height_spin.setValue(XENIUM_SLIDE_HEIGHT_MM)
+            layer = self._viewer.layers[self._capture_layer_name]
+            layer.selected_data = {0}
 
-        # Replace AP placeholder with slider
-        self._ap_group.layout().removeWidget(self._ap_placeholder)
-        self._ap_placeholder.deleteLater()
-        self._ap_placeholder = None
+        # Move capture layer above both atlas layers (reference and annotation)
+        # In napari, higher index = drawn on top. Insert before len = append to end.
+        cap_layer = self._viewer.layers[self._capture_layer_name]
+        cap_idx = self._viewer.layers.index(cap_layer)
+        self._viewer.layers.move(cap_idx, len(self._viewer.layers))
 
+        # AP slider
+        if self._ap_placeholder is not None:
+            self._ap_group.layout().removeWidget(self._ap_placeholder)
+            self._ap_placeholder.deleteLater()
+            self._ap_placeholder = None
+
+        if self._ap_slider is not None:
+            self._ap_group.layout().removeWidget(self._ap_slider)
         self._ap_slider = APSliderWidget(
             min_val=0,
             max_val=self._atlas_view.n_ap_slices - 1,
@@ -183,12 +289,12 @@ class CaptureVisualiserWidget(QWidget):
         self._ap_slider.valueChanged.connect(self._on_ap_slider_changed)
         self._ap_group.layout().addWidget(self._ap_slider)
 
-        # Sync napari dims when slider changes
+        try:
+            self._viewer.dims.events.current_step.disconnect(self._on_napari_dims_changed)
+        except (TypeError, ValueError):
+            pass
         self._viewer.dims.events.current_step.connect(self._on_napari_dims_changed)
 
-        # Disable load button, enable create new
-        self._load_btn.setEnabled(False)
-        self._load_btn.setText("Atlas loaded")
         self._create_new_btn.setEnabled(True)
         self._rotate_btn.setEnabled(True)
 

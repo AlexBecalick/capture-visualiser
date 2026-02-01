@@ -41,6 +41,10 @@ class APSliderWidget(QWidget):
         self._value_label.setMinimumWidth(40)
         layout.addWidget(self._value_label)
 
+    def set_label(self, text: str) -> None:
+        """Update the slider label (e.g. 'AP plane:', 'ML plane:', 'DV plane:')."""
+        self._label.setText(text)
+
     def _on_slider_changed(self, val: int) -> None:
         self._value_label.setText(str(val))
         self.valueChanged.emit(val)
